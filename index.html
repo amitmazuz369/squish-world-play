@@ -1,0 +1,1826 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Squish World Greybox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ink:#12171c; --ink-2:#4a5761; --ink-3:#7d8b97;
+    --paper:#dfe5ea; --panel:#f5f8fa; --panel-2:#e7ecf1;
+    --rule:#c2ccd5; --rule-strong:#8d9ba7;
+    --signal:#e2551c; --dj:#009b98; --swim:#2f63d6; --small:#b57d00; --ok:#2c8b52;
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,Segoe UI,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#e8edf2; --ink-2:#9dabb7; --ink-3:#6c7a86;
+      --paper:#0b0f13; --panel:#151b22; --panel-2:#1d252d;
+      --rule:#2b343d; --rule-strong:#4b5762;
+      --signal:#ff7a41; --dj:#2ee6e1; --swim:#6d9cff; --small:#ffc42a; --ok:#4cc47c;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#e8edf2; --ink-2:#9dabb7; --ink-3:#6c7a86;
+    --paper:#0b0f13; --panel:#151b22; --panel-2:#1d252d;
+    --rule:#2b343d; --rule-strong:#4b5762;
+    --signal:#ff7a41; --dj:#2ee6e1; --swim:#6d9cff; --small:#ffc42a; --ok:#4cc47c;
+  }
+
+  /* The publish wrapper supplies this; a file served on its own does not,
+     and .veil's display:grid then beats the UA rule and shows every
+     overlay at once. Declaring it here keeps local and published equal. */
+  [hidden]{display:none !important;}
+
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--mono); overflow:hidden; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent;
+  }
+  #stage{position:fixed; inset:0;}
+  canvas{display:block; width:100%; height:100%; touch-action:none;}
+
+  /* ---------- instrument strip ---------- */
+  .hud{
+    position:fixed; top:0; left:0;
+    padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px 16px;
+    pointer-events:none; font-size:11px; line-height:1.55; letter-spacing:.04em;
+    max-width:min(340px,calc(100vw - 32px));
+  }
+  .panel{
+    background:color-mix(in srgb, var(--panel) 88%, transparent);
+    border:1px solid var(--rule-strong);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    padding:9px 11px; pointer-events:auto;
+  }
+  .panel + .panel{margin-top:7px;}
+  .eyebrow{
+    font-size:9px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink-3); display:block; margin-bottom:5px;
+  }
+  .row{display:flex; justify-content:space-between; gap:12px; font-variant-numeric:tabular-nums;}
+  .row span:last-child{color:var(--ink-2);}
+  .chips{display:flex; gap:5px; flex-wrap:wrap;}
+  .chip{
+    border:1px solid var(--rule); color:var(--ink-3);
+    padding:2px 6px; font-size:10px; letter-spacing:.09em;
+    background:transparent; transition:none;
+  }
+  .chip.on{border-color:currentColor; font-weight:600;}
+  .chip.dj.on{color:var(--dj);} .chip.swim.on{color:var(--swim);} .chip.small.on{color:var(--small);}
+  .locklist{display:flex; flex-direction:column; gap:3px; font-size:10px;}
+  .lk{display:flex; justify-content:space-between; gap:10px; color:var(--ink-3);}
+  .lk b{font-weight:500; color:var(--ink-2);}
+  .lk.marked b{color:var(--signal);}
+  .lk.ready b{color:var(--ink);}
+  .lk.done b{color:var(--ok); text-decoration:line-through; text-decoration-thickness:1px;}
+  .lk i{font-style:normal; font-variant-numeric:tabular-nums;}
+
+  /* ---------- toast ---------- */
+  #toast{
+    position:fixed; left:50%; transform:translateX(-50%);
+    top:calc(env(safe-area-inset-top,0px) + 18px);
+    background:var(--panel); border:1px solid var(--signal); color:var(--ink);
+    padding:7px 14px; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+    pointer-events:none; opacity:0; max-width:calc(100vw - 32px); text-align:center;
+  }
+  #toast.show{opacity:1;}
+  @media (prefers-reduced-motion:no-preference){ #toast{transition:opacity .2s ease;} }
+
+  /* ---------- overlays ---------- */
+  .veil{
+    position:fixed; inset:0; display:grid; place-items:center;
+    padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);
+    background:color-mix(in srgb, var(--paper) 72%, transparent);
+    backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+    z-index:20; overflow-y:auto;
+  }
+  .card{
+    width:min(520px,100%); background:var(--panel);
+    border:1px solid var(--rule-strong); padding:22px 22px 20px;
+  }
+  .card h1{
+    font-family:var(--mono); font-size:19px; font-weight:600; margin:0 0 3px;
+    letter-spacing:-.01em; text-wrap:balance;
+  }
+  .card h2{font-size:13px; font-weight:600; margin:18px 0 7px; letter-spacing:.02em;}
+  .stamp{
+    font-size:9.5px; letter-spacing:.17em; text-transform:uppercase;
+    color:var(--signal); margin:0 0 14px;
+  }
+  .card p{font-family:var(--sans); font-size:13.5px; line-height:1.6; color:var(--ink-2); margin:0 0 12px; max-width:60ch;}
+  .keys{display:grid; grid-template-columns:auto 1fr; gap:5px 14px; font-size:11.5px; align-items:baseline;}
+  .keys dt{color:var(--ink); white-space:nowrap;}
+  .keys dd{margin:0; color:var(--ink-3); font-family:var(--sans); font-size:12.5px;}
+  .btn{
+    font-family:var(--mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+    background:var(--ink); color:var(--paper); border:1px solid var(--ink);
+    padding:11px 20px; cursor:pointer; width:100%; margin-top:18px;
+  }
+  .btn.ghost{background:transparent; color:var(--ink); border-color:var(--rule-strong); margin-top:8px;}
+  .btn:focus-visible, .chip:focus-visible, .tbtn:focus-visible{outline:2px solid var(--signal); outline-offset:2px;}
+  .rate{display:flex; gap:7px; margin:4px 0 2px;}
+  .rate button{
+    flex:1; font-family:var(--mono); font-size:15px; padding:11px 0;
+    background:transparent; border:1px solid var(--rule-strong); color:var(--ink-2); cursor:pointer;
+  }
+  .rate button[aria-pressed="true"]{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .scale{display:flex; justify-content:space-between; font-size:9.5px; letter-spacing:.09em; color:var(--ink-3); text-transform:uppercase; margin-top:4px;}
+  textarea{
+    width:100%; box-sizing:border-box; font-family:var(--sans); font-size:13px;
+    background:var(--panel-2); color:var(--ink); border:1px solid var(--rule-strong);
+    padding:9px 10px; min-height:66px; resize:vertical; margin-top:8px;
+  }
+  .times{font-size:11.5px; font-variant-numeric:tabular-nums; border-top:1px solid var(--rule); margin-top:4px;}
+  .times div{display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--rule); color:var(--ink-2);}
+  .times div b{font-weight:500; color:var(--ink);}
+  .note{font-family:var(--sans); font-size:12px; color:var(--ink-3); margin-top:12px; line-height:1.55;}
+  .codeHelp{font-family:var(--sans); font-size:13px; color:var(--ink-2); margin:16px 0 6px; line-height:1.55;}
+  #codeText{
+    font-family:var(--mono); font-size:10.5px; line-height:1.45; min-height:88px;
+    word-break:break-all; white-space:pre-wrap; margin-top:0;
+  }
+  .tblwrap{overflow-x:auto; margin-top:6px;}
+  table{border-collapse:collapse; width:100%; font-size:11px; font-variant-numeric:tabular-nums;}
+  th,td{text-align:left; padding:6px 10px 6px 0; border-bottom:1px solid var(--rule); white-space:nowrap;}
+  th{font-size:9px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-3); font-weight:500;}
+
+  /* ---------- touch controls ---------- */
+  #touch{position:fixed; inset:0; z-index:10; pointer-events:none;}
+  #touch.off{display:none;}
+  #stick{
+    position:absolute; width:118px; height:118px; border:1px solid var(--rule-strong);
+    border-radius:50%; opacity:0; pointer-events:none;
+    background:color-mix(in srgb, var(--panel) 45%, transparent);
+  }
+  #knob{
+    position:absolute; width:50px; height:50px; border-radius:50%;
+    background:color-mix(in srgb, var(--ink) 55%, transparent); opacity:0; pointer-events:none;
+  }
+  .tbtn{
+    touch-action:manipulation;
+    position:absolute; pointer-events:auto; border:1px solid var(--rule-strong);
+    background:color-mix(in srgb, var(--panel) 80%, transparent); color:var(--ink);
+    font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    border-radius:50%; display:grid; place-items:center; cursor:pointer;
+  }
+  #bJump{right:calc(env(safe-area-inset-right,0px) + 22px); bottom:calc(env(safe-area-inset-bottom,0px) + 34px); width:92px; height:92px; font-size:11px;}
+  #bSmall{right:calc(env(safe-area-inset-right,0px) + 122px); bottom:calc(env(safe-area-inset-bottom,0px) + 62px); width:68px; height:68px;}
+  #bDive{right:calc(env(safe-area-inset-right,0px) + 30px); bottom:calc(env(safe-area-inset-bottom,0px) + 142px); width:68px; height:68px;}
+  .tbtn.hit{background:var(--ink); color:var(--paper);}
+  .tbtn.dim{opacity:.35;}
+
+  /* Gaining an ability is the loudest moment in the run, so the name and
+     the button that works it sit together, in the middle, where the player
+     is already looking. Splitting them top and bottom hid the button. */
+  #grant{
+    position:fixed; left:50%; top:38%; transform:translate(-50%,-50%);
+    display:flex; flex-direction:column; align-items:center; gap:11px;
+    background:var(--panel); border:1px solid var(--rule-strong);
+    padding:18px 26px; pointer-events:none; opacity:0; text-align:center;
+    max-width:calc(100vw - 32px);
+  }
+  #grant.show{opacity:1;}
+  @media (prefers-reduced-motion:no-preference){ #grant{transition:opacity .2s ease;} }
+  #grant b{
+    font-size:15px; font-weight:600; letter-spacing:.15em;
+    text-transform:uppercase; color:var(--ink);
+  }
+  #grant .k{display:flex; align-items:center; gap:10px;}
+
+  #teach{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 58px);
+    display:flex; align-items:center; gap:10px;
+    background:var(--panel); border:1px solid var(--rule-strong);
+    padding:7px 14px 7px 7px; pointer-events:none; opacity:0;
+    max-width:calc(100vw - 32px);
+  }
+  #teach.show{opacity:1;}
+  @media (prefers-reduced-motion:no-preference){ #teach{transition:opacity .18s ease;} }
+  #teach kbd, #grant kbd{
+    font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.07em;
+    background:var(--ink); color:var(--paper); border:1px solid var(--ink);
+    padding:5px 10px; white-space:nowrap;
+  }
+  #teach span, #grant span{
+    font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2);
+  }
+  @media (pointer:coarse){
+    #teach{bottom:auto; top:calc(env(safe-area-inset-top,0px) + 104px);}
+    #grant{top:32%;}
+  }
+
+  #hint{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+    font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3);
+    pointer-events:none; text-align:center; max-width:calc(100vw - 32px);
+  }
+  #hint.hide{opacity:0;}
+  #hudMini{display:none; margin-top:6px; font-size:10px; letter-spacing:.05em;
+    color:var(--ink-2); font-variant-numeric:tabular-nums;}
+  @media (max-width:520px), (max-height:500px){
+    .hud{font-size:10px; max-width:calc(100vw - 32px);}
+    .panel-gates, .panel-stats{display:none;}
+    #hudMini{display:block;}
+    #hint{display:none;}
+  }
+</style>
+
+<div id="stage"><canvas id="c"></canvas></div>
+
+<div class="hud" aria-live="off">
+  <div class="panel">
+    <span class="eyebrow">Squish World · greybox 01</span>
+    <div class="chips" id="abil">
+      <span class="chip dj" id="cDj">Double Jump</span>
+      <span class="chip swim" id="cSwim">Swim</span>
+      <span class="chip small" id="cSmall">Shrink</span>
+    </div>
+    <div id="hudMini"></div>
+  </div>
+  <div class="panel panel-gates">
+    <span class="eyebrow">Gates</span>
+    <div class="locklist" id="locks"></div>
+  </div>
+  <div class="panel panel-stats">
+    <div class="row"><span>Relics</span><span id="mRel">0 / 3</span></div>
+    <div class="row"><span>Marked, unopened</span><span id="mMark">0</span></div>
+    <div class="row"><span>Returns to old ground</span><span id="mBack">0</span></div>
+    <div class="row"><span>Elapsed</span><span id="mTime">0:00</span></div>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+<div id="grant" role="status"><b></b><div class="k"><kbd></kbd><span></span></div></div>
+<div id="teach" role="status"><kbd></kbd><span></span></div>
+<div id="hint">WASD move · Space jump · C shrink · Shift sprint · V skin · R results · Esc release mouse</div>
+
+<div id="touch" class="off">
+  <div id="stick"></div><div id="knob"></div>
+  <button class="tbtn" id="bJump" type="button">Jump</button>
+  <button class="tbtn dim" id="bSmall" type="button">Shrink</button>
+  <button class="tbtn dim" id="bDive" type="button">Dive</button>
+</div>
+
+<div class="veil" id="vStart">
+  <div class="card">
+    <p class="stamp">Phase 1 · playable test build · no art, no audio</p>
+    <h1>Squish World Greybox</h1>
+    <p>Five gates. Three creatures. Every creature you pick up carries one way of moving, and that is the only thing that opens anything.</p>
+    <p>Nothing tells you which gate needs what. Walk into a gate you can't pass and the world remembers it for you — a shape appears above it. You'll learn what the shape means when you meet the creature that matches it.</p>
+    <h2>Controls</h2>
+    <dl class="keys" id="keysPc">
+      <dt>W A S D</dt><dd>Move</dd>
+      <dt>Mouse</dt><dd>Look</dd>
+      <dt>Space</dt><dd>Jump · hold to swim up</dd>
+      <dt>Shift</dt><dd>Sprint · hold to dive</dd>
+      <dt>C</dt><dd>Shrink / stand up</dd>
+      <dt>V</dt><dd>Change the skin</dd>
+      <dt>R</dt><dd>Test results</dd>
+    </dl>
+    <dl class="keys" id="keysTouch" hidden>
+      <dt>Left thumb</dt><dd>Move · push to the rim to run</dd>
+      <dt>Right drag</dt><dd>Look</dd>
+      <dt>Jump</dt><dd>Jump · hold to swim up</dd>
+      <dt>Dive</dt><dd>Sink while swimming</dd>
+      <dt>Shrink</dt><dd>Fit through cracks</dd>
+    </dl>
+    <button class="btn" id="bStart" type="button">Start the run</button>
+    <button class="btn ghost" id="bResults0" type="button">See test results</button>
+    <p class="note" id="startNote">Your run is recorded — times per gate, what you got stuck on, and your rating at the end. That's the whole point of this build.</p>
+  </div>
+</div>
+
+<div class="veil" id="vEnd" hidden>
+  <div class="card">
+    <p class="stamp" id="endStamp">Run complete</p>
+    <h1 id="endTitle">All five gates open</h1>
+    <div class="times" id="endTimes"></div>
+    <h2>Did moving around feel good?</h2>
+    <div class="rate" id="rate">
+      <button type="button" data-v="1" aria-pressed="false">1</button>
+      <button type="button" data-v="2" aria-pressed="false">2</button>
+      <button type="button" data-v="3" aria-pressed="false">3</button>
+      <button type="button" data-v="4" aria-pressed="false">4</button>
+      <button type="button" data-v="5" aria-pressed="false">5</button>
+    </div>
+    <div class="scale"><span>Bad</span><span>Great</span></div>
+    <textarea id="endNote" placeholder="Where did you get stuck, and what made you keep going?" aria-label="What got you stuck"></textarea>
+    <button class="btn" id="bSend" type="button">Send and keep playing</button>
+    <div id="codeBox" hidden>
+      <p class="codeHelp">Send this code back to whoever shared the link with you. That is how your run reaches them.</p>
+      <textarea id="codeText" readonly aria-label="Your result code"></textarea>
+      <button class="btn" id="bShare" type="button">Share my result</button>
+      <button class="btn ghost" id="bCopy" type="button">Copy the code</button>
+    </div>
+    <button class="btn ghost" id="bSkip" type="button">Keep playing without sending</button>
+  </div>
+</div>
+
+<div class="veil" id="vRes" hidden>
+  <div class="card">
+    <p class="stamp">Phase 1 exit criteria</p>
+    <h1>Test results</h1>
+    <div id="resBody"><p>Reading runs…</p></div>
+    <button class="btn ghost" id="bResClose" type="button">Back to the run</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+if (!window.THREE) {
+  document.getElementById('vStart').innerHTML =
+    '<div class="card"><h1>Renderer failed to load</h1><p>The 3D library did not load. Reload the page — if it keeps failing, the network blocked the CDN.</p></div>';
+  return;
+}
+
+/* ================= tuning ================= */
+var CFG = {
+  walk:7.2, sprint:11.4,
+  accelGround:72, accelAir:30, brakeGround:62, brakeAir:3.2,
+  gravUp:22, gravDown:34,
+  jumpVel:9.4, djVel:9.2, cutMul:0.45,
+  coyote:0.12, buffer:0.15,
+  hStand:1.8, hSmall:0.7, radius:0.42,
+  smallSpeed:0.78,
+  swimSpeed:5.4, swimAccel:26, swimVert:15, buoy:8.5, waterGrav:4.0, waterDrag:3.1,
+  flounder:0.22, floundPush:7.0,
+  camDist:6.6, camMinDist:1.2, camLerp:13, lookSens:0.0023
+};
+var REDUCE = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ================= level ================= */
+// box: cx, cy, cz, w, h, d   (h measured from cy - h/2 to cy + h/2)
+var B = [
+  // --- ground plates ---
+  [ 0,-0.5,  1.5, 44,1,34, 'floor'],                 // plaza          top 0
+  [ 0, 1.6,-31.0, 44,3.2,31,'plate'],                // north plateau  top 3.2
+  [ 0,-6.5, 27.0, 44,1,17, 'floor'],                 // channel bed    top -6
+  [ 0,-0.5, 44.0, 44,1,17, 'floor'],                 // far shore      top 0
+  [ 0, 0.45,-11.0,  5,0.9,5,'plate'],                // starter perch  top 0.9
+
+  // --- north wall, high crack at y 6.2 .. 7.1, x -2 .. 2 ---
+  [-12,7.6,-48, 20,8.8,3,'wall'],
+  [ 12,7.6,-48, 20,8.8,3,'wall'],
+  [  0,4.70,-48, 4,3.0,3,'wall'],                    // under crack  3.2 .. 6.2
+  [  0,9.55,-48, 4,4.9,3,'wall'],                    // over  crack  7.1 .. 12
+  // gate-5 reward ledge
+  [  0,5.95,-53, 14,0.5,7,'plate'],                  // top 6.2
+  [ -7.5,7.2,-53, 1,2,7,'wall'],
+  [  7.5,7.2,-53, 1,2,7,'wall'],
+  [  0,7.2,-56.2, 14,2,1.5,'wall'],
+
+  // --- east wall, low crack at y 0 .. 0.9, z -3 .. 1 ---
+  [23,4.0,  9.75, 2,8,17.5,'wall'],
+  [23,3.95,-1.0,  2,6.1,4, 'wall'],                  // over crack 0.9 .. 7
+  [23,4.0, -9.25, 2,8,12.5,'wall'],
+  [23,7.6,-31.0,  2,8.8,31,'wall'],
+  [23,4.0, 35.5,  2,8,34, 'wall'],
+  // east alcove behind the crack
+  [29,-0.5,-1, 14,1,10,'floor'],                     // top 0, runs under the crack
+  [36.5,3,-1,   1,6,12,'wall'],
+  [30,3,-6.5,  14,6,1, 'wall'],
+  [30,3, 4.5,  14,6,1, 'wall'],
+  [30,6.5,-1,  14,1,12,'wall'],
+
+  // --- west wall, underwater crack at y -5.5 .. -4.6, z 25 .. 29 ---
+  [-23,4.0,  1.5, 2,8,34, 'wall'],
+  [-23,7.6,-31.0, 2,8.8,31,'wall'],
+  [-23,0.0, 21.75,2,12,6.5,'wall'],
+  [-23,0.0, 32.25,2,12,6.5,'wall'],
+  [-23,-5.75,27,  2,0.5,4,'wall'],                   // under crack -6 .. -5.5
+  [-23,0.70, 27,  2,10.6,4,'wall'],                  // over  crack -4.6 .. 6
+  [-23,4.0, 44.0, 2,8,17, 'wall'],
+  // flooded chamber behind the crack
+  [-31,-6.25,27, 14,0.5,12,'floor'],                 // top -6
+  [-38.5,-2.75,27, 1,7,12,'wall'],
+  [-31,-2.75,20.5, 16,7,1,'wall'],
+  [-31,-2.75,33.5, 16,7,1,'wall'],
+  [-31, 0.50,27,   16,1,14,'wall'],
+
+  // --- outer bound ---
+  [0,4,53.2, 48,8,1,'wall']
+];
+
+var WATER = [
+  [  0,-3,27, 44,6,17],     // the channel
+  [-30,-3,27, 16,6,12]      // the flooded chamber
+];
+
+var PICKUPS = [
+  {id:'dj',    x:0,  y:1.95, z:-11, label:'Double Jump'},
+  {id:'swim',  x:-12,y:4.30, z:-28, label:'Swim'},
+  {id:'small', x:10, y:1.05, z:44,  label:'Shrink'}
+];
+
+var RELICS = [
+  {id:'rA', x:30,  y:1.1,  z:-1},
+  {id:'rB', x:-30, y:-4.6, z:27},
+  {id:'rC', x:0,   y:7.3,  z:-53}
+];
+
+// ap / cl are axis-aligned boxes [x0,y0,z0, x1,y1,z1] tested against the
+// player's centre. Spheres were missable: the swim creature sits 12 units
+// off gate 1's old clear point, so a run could take the plateau, collect
+// from it and still log the gate as unopened for another two minutes.
+var GATES = [
+  {id:'g1', n:1, needs:['dj'],
+   ap:[-22,-1,-20,  22, 3,  -2],  cl:[-22, 3.0,-34,  22, 9, -16],
+   mx:0,    my:5.2, mz:-15.5, name:'North ledge'},
+  {id:'g2', n:2, needs:['small'],
+   ap:[ 15,-1, -5, 22.4, 3,   3],  cl:[ 23.6,-1, -6,  36, 6,   4],
+   mx:23,   my:2.6, mz:-1,    name:'East crack'},
+  {id:'g3', n:3, needs:['swim'],
+   ap:[-22,-3, 14,  22, 3,  23],  cl:[-22,-1, 36,  22, 6,  52],
+   mx:0,    my:2.6, mz:18.5,  name:'Channel'},
+  {id:'g4', n:4, needs:['swim','small'],
+   ap:[-24,-9, 22, -14,-2,  32],  cl:[-38,-7, 21, -24, 1,  33],
+   mx:-21.4,my:-3.2,mz:27,    name:'Sunken crack'},
+  {id:'g5', n:5, needs:['dj','small'],
+   ap:[-12, 3,-49,  12, 7, -38],  cl:[ -7, 5.8,-57,   7,11,-49.4],
+   mx:0,    my:8.3, mz:-48,   name:'High crack'}
+];
+
+// Which input each ability needs, and what proves the player found it.
+// This teaches the BUTTON, never the solution — the gate stays a puzzle.
+var TEACH = {
+  dj:    {pc:'SPACE',  touch:'JUMP',   hint:'again, in mid-air',     used:false},
+  swim:  {pc:'SHIFT',  touch:'DIVE',   hint:'to sink \u00b7 jump to rise', used:false},
+  small: {pc:'C',      touch:'SHRINK', hint:'to fit through gaps',   used:false}
+};
+
+var COL = {dj:0x18c8c3, swim:0x3f7dff, small:0xe8a300, mark:0xff6a2b, relic:0xf2f6fa};
+
+/* ================= scene ================= */
+var canvas = document.getElementById('c');
+var renderer = new THREE.WebGLRenderer({canvas:canvas, antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+var TOUCH = window.matchMedia('(pointer: coarse)').matches;
+renderer.shadowMap.enabled = !TOUCH;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+var scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fb0bd);
+scene.fog = new THREE.Fog(0x9fb0bd, 55, 165);
+
+var camera = new THREE.PerspectiveCamera(66, 1, 0.1, 400);
+
+scene.add(new THREE.HemisphereLight(0xdfe9f0, 0x555f68, 0.95));
+var sun = new THREE.DirectionalLight(0xfff4e6, 0.85);
+sun.position.set(38, 60, 22);
+if (!TOUCH) {
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024,1024);
+  var sc = sun.shadow.camera;
+  sc.left=-70; sc.right=70; sc.top=70; sc.bottom=-70; sc.near=1; sc.far=200;
+  sun.shadow.bias = -0.0012;
+}
+scene.add(sun);
+
+var MAT = {
+  floor: new THREE.MeshLambertMaterial({color:0x99a2aa}),
+  plate: new THREE.MeshLambertMaterial({color:0xa9b2ba}),
+  wall:  new THREE.MeshLambertMaterial({color:0x7f8890})
+};
+var unit = new THREE.BoxGeometry(1,1,1);
+
+var SOLIDS = [];
+for (var i=0;i<B.length;i++){
+  var b = B[i];
+  var m = new THREE.Mesh(unit, MAT[b[6]] || MAT.wall);
+  m.position.set(b[0], b[1], b[2]);
+  m.scale.set(b[3], b[4], b[5]);
+  if (!TOUCH){ m.castShadow = true; m.receiveShadow = true; }
+  scene.add(m);
+  SOLIDS.push({
+    x0:b[0]-b[3]/2, x1:b[0]+b[3]/2,
+    y0:b[1]-b[4]/2, y1:b[1]+b[4]/2,
+    z0:b[2]-b[5]/2, z1:b[2]+b[5]/2,
+    mesh:m
+  });
+}
+// faint edge lines make greybox depth readable
+var edgeMat = new THREE.LineBasicMaterial({color:0x5d666e, transparent:true, opacity:0.42});
+var edgeGeo = new THREE.EdgesGeometry(unit);
+for (var e=0;e<SOLIDS.length;e++){
+  var le = new THREE.LineSegments(edgeGeo, edgeMat);
+  le.position.copy(SOLIDS[e].mesh.position);
+  le.scale.copy(SOLIDS[e].mesh.scale);
+  scene.add(le);
+}
+
+var SKY = new THREE.Color(0x9fb0bd), DEEP = new THREE.Color(0x2c6a86), UNDER = false;
+function applyUnderwater(c){
+  var under = false;
+  for (var i=0;i<WVOL.length;i++){
+    var v = WVOL[i];
+    if (c.x > v.x0 && c.x < v.x1 && c.z > v.z0 && c.z < v.z1 && c.y < v.y1 && c.y > v.y0){ under = true; break; }
+  }
+  if (under === UNDER) return;
+  UNDER = under;
+  scene.fog.color.copy(under ? DEEP : SKY);
+  scene.background.copy(under ? DEEP : SKY);
+  scene.fog.near = under ? 0.5 : 55;
+  scene.fog.far  = under ? 20  : 165;
+}
+var WMAT = new THREE.MeshLambertMaterial({color:0x2f6fd0, transparent:true, opacity:0.44,
+  depthWrite:false});
+var WVOL = [];
+for (var w=0; w<WATER.length; w++){
+  var v = WATER[w];
+  var wm = new THREE.Mesh(unit, WMAT);
+  wm.renderOrder = 10;                 // drawn last, so it tints what is inside it
+  wm.position.set(v[0], v[1], v[2]);
+  wm.scale.set(v[3], v[4], v[5]);
+  scene.add(wm);
+  WVOL.push({
+    x0:v[0]-v[3]/2, x1:v[0]+v[3]/2,
+    y0:v[1]-v[4]/2, y1:v[1]+v[4]/2,
+    z0:v[2]-v[5]/2, z1:v[2]+v[5]/2
+  });
+}
+
+/* ---- ability glyphs: the marker above a gate and the creature share a shape ---- */
+function glyph(kind){
+  var g = new THREE.Group();
+  var mat = new THREE.MeshLambertMaterial({color:COL[kind], emissive:COL[kind], emissiveIntensity:0.55});
+  if (kind === 'dj'){
+    var oa = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), mat); oa.position.y = 0.30;
+    var ob = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), mat); ob.position.y = -0.14;
+    g.add(oa, ob);
+  } else if (kind === 'swim'){
+    var t1 = new THREE.Mesh(new THREE.TorusGeometry(0.30,0.075,8,22), mat); t1.rotation.x = Math.PI/2; t1.position.y = 0.16;
+    var t2 = new THREE.Mesh(new THREE.TorusGeometry(0.22,0.06,8,20), mat); t2.rotation.x = Math.PI/2; t2.position.y = -0.14;
+    g.add(t1, t2);
+  } else {
+    var big = new THREE.Mesh(new THREE.BoxGeometry(0.56,0.56,0.56),
+      new THREE.MeshBasicMaterial({color:COL[kind], wireframe:true}));
+    var sm  = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.2,0.2), mat);
+    g.add(big, sm);
+  }
+  return g;
+}
+
+// creature pickups
+var pickMeshes = {};
+for (var p=0;p<PICKUPS.length;p++){
+  var pk = PICKUPS[p];
+  var grp = new THREE.Group();
+  var body = new THREE.Mesh(new THREE.SphereGeometry(0.46,18,14),
+    new THREE.MeshLambertMaterial({color:COL[pk.id], emissive:COL[pk.id], emissiveIntensity:0.3}));
+  var gl = glyph(pk.id); gl.position.y = 1.0; gl.scale.setScalar(0.8);
+  grp.add(body, gl);
+  grp.position.set(pk.x, pk.y, pk.z);
+  scene.add(grp);
+  pickMeshes[pk.id] = {grp:grp, gl:gl, base:pk.y};
+}
+
+// relics
+var relicMeshes = {};
+for (var r=0;r<RELICS.length;r++){
+  var rl = RELICS[r];
+  var rm = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42,0),
+    new THREE.MeshLambertMaterial({color:COL.relic, emissive:0xbcd0e0, emissiveIntensity:0.45}));
+  rm.position.set(rl.x, rl.y, rl.z);
+  scene.add(rm);
+  relicMeshes[rl.id] = {m:rm, base:rl.y};
+}
+
+// gate markers, hidden until the gate is marked
+var markMeshes = {};
+for (var gi=0; gi<GATES.length; gi++){
+  var G = GATES[gi];
+  var mg = new THREE.Group();
+  for (var k=0;k<G.needs.length;k++){
+    var s = glyph(G.needs[k]);
+    s.position.x = (k - (G.needs.length-1)/2) * 0.85;
+    mg.add(s);
+  }
+  var ring = new THREE.Mesh(new THREE.TorusGeometry(0.95,0.05,6,28),
+    new THREE.MeshBasicMaterial({color:COL.mark}));
+  ring.rotation.x = Math.PI/2; ring.position.y = -0.85;
+  mg.add(ring);
+  mg.position.set(G.mx, G.my, G.mz);
+  mg.visible = false;
+  scene.add(mg);
+  markMeshes[G.id] = {grp:mg, base:G.my, ring:ring};
+}
+
+/* ---- player ---- */
+/* ---- the squishy -----------------------------------------------------
+   Built from what the real toy does: a clear skin over gel beads that are
+   themselves translucent, and a silhouette that goes lumpy where a bead
+   presses out. The membrane is displaced by its nearest surface beads, so
+   squeezing does not just flatten a sphere — it pushes bumps through it. */
+var SKINS = [
+  {id:'clear',   nm:'Clear skin',  op:0.30, col:0xf2fbff, mesh:false, bead:0.62},
+  {id:'mesh',    nm:'Mesh net',    op:0.26, col:0xeaf6fb, mesh:true,  bead:0.70},
+  {id:'frosted', nm:'Frosted',     op:0.55, col:0xf6f2f4, mesh:false, bead:0.45}
+];
+var skinIx = 0;
+// Gel beads read as translucent, not as matte plastic, and the mix is
+// mostly milky white with colour scattered through it.
+var BEAD_TONES = [0xffffff, 0xf4f9ff, 0xff9f8a, 0x8fdcc0, 0x9ec8f5, 0xf7e089, 0xcfb4ea];
+
+var pGrp = new THREE.Group();
+var SQ = {};
+SQ.skin = new THREE.MeshPhongMaterial({
+  color:SKINS[0].col, transparent:true, opacity:SKINS[0].op, depthWrite:false,
+  shininess:150, specular:0xffffff, side:THREE.DoubleSide
+});
+SQ.hips = new THREE.Group(); pGrp.add(SQ.hips);
+SQ.geo = new THREE.SphereGeometry(1, 20, 14);
+SQ.rest = SQ.geo.attributes.position.array.slice();   // pristine copy to displace from
+SQ.body = new THREE.Mesh(SQ.geo, SQ.skin);
+SQ.body.position.y = 0.5;
+SQ.hips.add(SQ.body);
+
+SQ.net = new THREE.Mesh(SQ.geo, new THREE.MeshBasicMaterial({
+  color:0x2b3a42, wireframe:true, transparent:true, opacity:0.55
+}));
+SQ.net.visible = false; SQ.body.add(SQ.net);
+
+var sqSeed = 7717;
+function sqRnd(){ sqSeed = (sqSeed*1664525 + 1013904223) % 4294967296; return sqSeed/4294967296; }
+SQ.beads = []; SQ.groups = [];
+var BEAD_PER = 30, BEAD_R = 0.12;
+var beadGeo = new THREE.SphereGeometry(BEAD_R, 6, 4);
+for (var bt=0; bt<BEAD_TONES.length; bt++){
+  var bm = new THREE.MeshPhongMaterial({
+    color:BEAD_TONES[bt], transparent:true, opacity:0.88, shininess:70, specular:0x9fdfff
+  });
+  var im = new THREE.InstancedMesh(beadGeo, bm, BEAD_PER);
+  im.frustumCulled = false;
+  SQ.body.add(im); SQ.groups.push(im);
+  var rest = [];
+  for (var i=0;i<BEAD_PER;i++){
+    var u=sqRnd(), v=sqRnd(), w=sqRnd();
+    var th=Math.acos(2*u-1), ph=2*Math.PI*v, r=Math.pow(w,1/3)*0.84;
+    rest.push({p:new THREE.Vector3(r*Math.sin(th)*Math.cos(ph), r*Math.cos(th), r*Math.sin(th)*Math.sin(ph)),
+               ph:sqRnd()*6.28, sp:0.7+sqRnd()*0.8});
+  }
+  SQ.beads.push(rest);
+}
+// the beads that sit near the skin are the ones that can push a bump out
+SQ.surf = [];
+for (var gi=0; gi<SQ.beads.length; gi++)
+  for (var i=0;i<SQ.beads[gi].length;i++)
+    if (SQ.beads[gi][i].p.length() > 0.55) SQ.surf.push(SQ.beads[gi][i].p);
+// each skin vertex remembers its nearest bump, once, so the frame cost is flat
+SQ.lastPush = -1;
+SQ.near = new Int16Array(SQ.rest.length/3);
+for (var vi=0; vi<SQ.rest.length/3; vi++){
+  var vx=SQ.rest[vi*3], vy=SQ.rest[vi*3+1], vz=SQ.rest[vi*3+2], best=-1, bd=9;
+  for (var k=0;k<SQ.surf.length;k++){
+    var q=SQ.surf[k];
+    var d=(vx-q.x)*(vx-q.x)+(vy-q.y)*(vy-q.y)+(vz-q.z)*(vz-q.z);
+    if (d<bd){ bd=d; best=k; }
+  }
+  SQ.near[vi]=best;
+}
+
+// the three you carry, floating inside
+SQ.held = [];
+for (var i=0;i<3;i++){
+  var hm = new THREE.Mesh(new THREE.SphereGeometry(0.2,10,8),
+    new THREE.MeshLambertMaterial({color:0x888888, emissive:0x444444, emissiveIntensity:0.7}));
+  hm.visible = false; SQ.body.add(hm); SQ.held.push(hm);
+}
+var footMat = new THREE.MeshLambertMaterial({color:0xf0b9ac});
+SQ.footL = new THREE.Mesh(new THREE.SphereGeometry(1,10,8), footMat);
+SQ.footR = new THREE.Mesh(new THREE.SphereGeometry(1,10,8), footMat);
+SQ.footL.scale.set(0.16,0.09,0.22); SQ.footR.scale.set(0.16,0.09,0.22);
+pGrp.add(SQ.footL, SQ.footR);
+var eyeMat = new THREE.MeshLambertMaterial({color:0x241f22});
+SQ.eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6), eyeMat);
+SQ.eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,6), eyeMat);
+SQ.body.add(SQ.eyeL, SQ.eyeR);
+if (!TOUCH){ SQ.footL.castShadow = true; SQ.footR.castShadow = true; }
+scene.add(pGrp);
+
+function applySkin(){
+  var k = SKINS[skinIx];
+  SQ.skin.color.setHex(k.col);
+  SQ.skin.opacity = k.op;
+  SQ.net.visible = k.mesh;
+  for (var i=0;i<SQ.groups.length;i++) SQ.groups[i].material.opacity = k.bead + 0.22;
+}
+applySkin();
+
+var _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
+var _packCol = new THREE.Color(0xc9d6e2), _baseCol = new THREE.Color();
+function drawSquishy(t, sq, bob){
+  var H = P.vh;
+  var w = 1/Math.sqrt(sq);
+  var bodyR = H * 0.5, rise = bodyR*0.92*sq;
+  SQ.body.position.y = H*0.03 + rise + (bob||0);
+  SQ.body.scale.set(bodyR*0.92*w, rise, bodyR*0.92*w);
+
+  // SHRINK: the body gets smaller faster than the beads do, so the fill
+  // crowds and packs tight, and the packed beads lose room to jiggle.
+  var pack = Math.max(0, Math.min(1, (CFG.hStand - H)/(CFG.hStand - CFG.hSmall)));
+  var beadGrow = 1 + pack*0.55, inward = 1 - pack*0.12, jit = 0.02*(1 - pack*0.75);
+  _s.set(beadGrow/w, beadGrow/sq, beadGrow/w);
+
+  // DOUBLE JUMP: compress first (sq), then the fill bursts outward. The
+  // burst peaks a beat after the jump, which is what reads as a pop.
+  var popAmt = P.pop * P.pop;           // strongest on the press frame, then fades
+  // DIVE: submerged, the gel beads are buoyant and crowd toward the top.
+  var sub = P.sub;
+
+  var push = Math.max(0, 1 - sq);                    // how hard it is being squeezed
+  for (var gi=0; gi<SQ.groups.length; gi++){
+    var rest = SQ.beads[gi], im = SQ.groups[gi];
+    for (var i=0;i<rest.length;i++){
+      var b = rest[i];
+      var rad = Math.sqrt(b.p.x*b.p.x + b.p.z*b.p.z);
+      var r3  = Math.sqrt(rad*rad + b.p.y*b.p.y);
+      var burst = 1 + popAmt * 0.32 * r3;
+      var bulge = (1 + push * 0.75 * rad) * burst;
+      var lift  = sub * (0.85 - b.p.y) * 0.24;
+      _v.set((b.p.x*bulge) * inward + Math.sin(t*4.2*b.sp + b.ph)*jit,
+             (b.p.y*burst + lift) * inward + Math.cos(t*3.6*b.sp + b.ph)*jit,
+             (b.p.z*bulge) * inward + Math.sin(t*3.9*b.sp + b.ph*1.7)*jit);
+      _m4.compose(_v, _q, _s);
+      im.setMatrixAt(i, _m4);
+    }
+    im.instanceMatrix.needsUpdate = true;
+  }
+
+  // the packed skin thickens and dulls, so small reads as dense, not as far
+  var k = SKINS[skinIx];
+  SQ.skin.opacity = k.op + pack*0.24;
+  SQ.skin.color.copy(_baseCol.setHex(k.col)).lerp(_packCol, pack*0.55);
+
+  // skin goes lumpy where a bead presses on it
+  var drive = push + popAmt*0.7;
+  if (Math.abs(drive - SQ.lastPush) < 0.004) return drawHeld(t);
+  SQ.lastPush = drive;
+  var pos = SQ.geo.attributes.position.array, amp = 0.045 + drive * 0.16;
+  for (var vi=0; vi<pos.length/3; vi++){
+    var n = SQ.near[vi], q = SQ.surf[n];
+    var qr = Math.sqrt(q.x*q.x + q.z*q.z);
+    var qb = (1 + push * 0.75 * qr) * (1 + popAmt*0.32);
+    var vx = SQ.rest[vi*3], vy = SQ.rest[vi*3+1], vz = SQ.rest[vi*3+2];
+    var d = Math.sqrt((vx-q.x*qb)*(vx-q.x*qb) + (vy-q.y)*(vy-q.y) + (vz-q.z*qb)*(vz-q.z*qb));
+    var g = Math.max(0, 1 - d/0.55);
+    var k = 1 + amp * g * g;
+    pos[vi*3]=vx*k; pos[vi*3+1]=vy*k; pos[vi*3+2]=vz*k;
+  }
+  SQ.geo.attributes.position.needsUpdate = true;
+  SQ.geo.computeVertexNormals();
+  drawHeld(t);
+}
+
+function drawHeld(t){
+  var order = ['dj','swim','small'];
+  for (var j=0;j<3;j++){
+    var hm = SQ.held[j], owns = has(order[j]);
+    hm.visible = owns;
+    if (!owns) continue;
+    hm.material.color.setHex(COL[order[j]]);
+    hm.material.emissive.setHex(COL[order[j]]);
+    var ang = t*0.8 + j*2.094;
+    hm.position.set(Math.cos(ang)*0.5, -0.1 + Math.sin(t*1.6+j)*0.18, Math.sin(ang)*0.5);
+    hm.scale.copy(_s).multiplyScalar(1.05);
+  }
+  SQ.eyeL.position.set(-0.3, 0.2, 0.92); SQ.eyeR.position.set(0.3, 0.2, 0.92);
+  SQ.eyeL.scale.copy(_s); SQ.eyeR.scale.copy(_s);
+}
+
+/* ---- ability effects ---------------------------------------------- */
+var FX = {bubbles:[], ring:null, ringT:0, spawnAcc:0};
+(function(){
+  var bg = new THREE.SphereGeometry(1, 8, 6);
+  var bm = new THREE.MeshPhongMaterial({color:0xffffff, transparent:true, opacity:0.55,
+    shininess:120, specular:0xffffff, depthWrite:false});
+  for (var i=0;i<22;i++){
+    var m = new THREE.Mesh(bg, bm.clone());
+    m.visible = false; scene.add(m);
+    FX.bubbles.push({m:m, v:new THREE.Vector3(), life:0, ph:Math.random()*6.28});
+  }
+  FX.ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.07, 6, 30),
+    new THREE.MeshBasicMaterial({color:COL.dj, transparent:true, opacity:0, depthWrite:false}));
+  FX.ring.rotation.x = Math.PI/2; FX.ring.visible = false; scene.add(FX.ring);
+})();
+function spawnBubble(x, y, z, size){
+  for (var i=0;i<FX.bubbles.length;i++){
+    var b = FX.bubbles[i];
+    if (b.life > 0) continue;
+    b.m.position.set(x, y, z);
+    b.v.set((Math.random()-0.5)*0.4, 1.3 + Math.random()*0.7, (Math.random()-0.5)*0.4);
+    b.m.scale.setScalar(size);
+    b.life = 1; b.m.visible = true;
+    return;
+  }
+}
+function tickFX(dt, diving){
+  // bubbles leak from the top of a submerged body; diving squeezes out more
+  if (P.sub > 0.3 && P.inWater){
+    FX.spawnAcc += dt * (diving ? 16 : 2.5);
+    while (FX.spawnAcc >= 1){
+      FX.spawnAcc -= 1;
+      spawnBubble(P.pos.x + (Math.random()-0.5)*P.vh*0.35,
+                  P.pos.y + P.vh*0.82,
+                  P.pos.z + (Math.random()-0.5)*P.vh*0.35,
+                  0.04 + Math.random()*0.05);
+    }
+  } else FX.spawnAcc = 0;
+  for (var i=0;i<FX.bubbles.length;i++){
+    var b = FX.bubbles[i];
+    if (b.life <= 0) continue;
+    b.life -= dt/1.5;
+    b.m.position.addScaledVector(b.v, dt);
+    b.m.position.x += Math.sin(RUN.t*6 + b.ph)*0.006;
+    var surf = P.inWater ? P.inWater.y1 : -1e9;
+    if (b.life <= 0 || (P.inWater && b.m.position.y > surf)){
+      b.life = 0; b.m.visible = false; continue;
+    }
+    b.m.material.opacity = 0.55 * Math.min(1, b.life*2);
+  }
+  // the double-jump ring: the air the body just pushed off
+  if (FX.ringT > 0){
+    FX.ringT -= dt/0.38;
+    var k = 1 - Math.max(0, FX.ringT);
+    FX.ring.scale.setScalar(0.35 + k*1.5);
+    FX.ring.material.opacity = 0.75 * Math.max(0, FX.ringT);
+    if (FX.ringT <= 0) FX.ring.visible = false;
+  }
+}
+function popDoubleJump(){
+  P.sq = 1.32; P.sqv = 0; P.pop = 1;    // stretch up at once; the beads burst with it
+  FX.ring.position.set(P.pos.x, P.pos.y + 0.05, P.pos.z);
+  FX.ring.visible = true; FX.ringT = 1;
+}
+
+var blob = new THREE.Mesh(new THREE.CircleGeometry(0.46,20),
+  new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.24}));
+blob.rotation.x = -Math.PI/2;
+scene.add(blob);
+var downRay = new THREE.Raycaster();
+var camRay = new THREE.Raycaster();
+var solidMeshes = SOLIDS.map(function(s){ return s.mesh; });
+
+/* ================= state ================= */
+var P = {
+  pos:new THREE.Vector3(0,1,8), vel:new THREE.Vector3(),
+  h:CFG.hStand, small:false, grounded:false,
+  coyote:0, buffer:0, airJumps:0, cut:false,
+  inWater:null, face:0, sq:1, sqv:0,
+  // vh is the height the body is DRAWN at. Collision (h) changes at once;
+  // the body springs toward it, so shrinking reads as a squeeze, not a cut.
+  vh:1.8, vhv:0,
+  pop:0,          // double-jump burst, 1 -> 0
+  sub:0,          // how submerged, smoothed 0..1
+  diveBlock:false, // Shift carried in from a sprint does not dive
+  diveWas:false
+};
+var yaw = 0, pitch = -0.12;
+var camPos = new THREE.Vector3(0, 4, 16);
+
+var RUN = {
+  started:false, t:0,
+  abilities:{}, opened:{}, openedAt:{}, marked:{}, markOrder:[],
+  relics:{}, zone:'plaza', seen:{plaza:1}, backtracks:0, taughtAt:{},
+  skinsSeen:{clear:true},
+  sent:false, endShown:false
+};
+
+var keys = Object.create(null);
+var touchMove = {x:0, y:0};
+var tJump = false, tDive = false;
+
+/* ================= helpers ================= */
+function fmt(s){
+  s = Math.max(0, Math.floor(s));
+  return Math.floor(s/60) + ':' + ('0' + (s%60)).slice(-2);
+}
+var toastEl = document.getElementById('toast'), toastT = 0;
+function toast(msg, secs){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  toastT = secs || 2.6;
+}
+var teachEl  = document.getElementById('teach');
+var teachKey = teachEl.querySelector('kbd');
+var teachTxt = teachEl.querySelector('span');
+var teachOn = null, teachHold = 0, dwellId = null, dwellT = 0, wetT = 0;
+
+function showTeach(id, secs){
+  if (teachOn === id && secs === 0) return;
+  var t = TEACH[id];
+  teachKey.textContent = TOUCH ? t.touch : t.pc;
+  teachTxt.textContent = t.hint;
+  teachEl.classList.add('show');
+  teachOn = id; teachHold = secs;
+}
+var grantEl = document.getElementById('grant');
+var grantNm  = grantEl.querySelector('b');
+var grantKey = grantEl.querySelector('kbd');
+var grantTxt = grantEl.querySelector('span');
+var grantHold = 0;
+
+function showGrant(id, label){
+  var t = TEACH[id];
+  grantNm.textContent  = label;
+  grantKey.textContent = TOUCH ? t.touch : t.pc;
+  grantTxt.textContent = t.hint;
+  grantEl.classList.add('show');
+  grantHold = 6;
+}
+function hideTeach(){ teachEl.classList.remove('show'); teachOn = null; teachHold = 0; }
+// Called the first time the player actually performs the input. After that
+// the prompt never appears for it again.
+function learned(id){
+  var t = TEACH[id];
+  if (!t || t.used) return;
+  t.used = true;
+  if (teachOn === id) hideTeach();
+}
+function has(a){ return !!RUN.abilities[a]; }
+function gateReady(G){
+  for (var i=0;i<G.needs.length;i++) if (!has(G.needs[i])) return false;
+  return true;
+}
+function moveToward(cur, tgt, maxStep){
+  var d = tgt - cur;
+  if (Math.abs(d) <= maxStep) return tgt;
+  return cur + (d > 0 ? maxStep : -maxStep);
+}
+
+/* ================= collision ================= */
+function overlaps(s, y, h){
+  var r = CFG.radius;
+  return !(P.pos.x + r <= s.x0 || P.pos.x - r >= s.x1 ||
+           y + h       <= s.y0 || y           >= s.y1 ||
+           P.pos.z + r <= s.z0 || P.pos.z - r >= s.z1);
+}
+// Resolve along the shallowest axis of penetration, with a bias toward
+// vertical so shore edges and low steps lift the player instead of
+// shoving them sideways. Y-first passes wedge the player at the mouth
+// of a crack; this does not.
+var Y_BIAS = 0.75;
+function resolve(){
+  var r = CFG.radius;
+  for (var pass=0; pass<3; pass++){
+    var touched = false;
+    for (var i=0;i<SOLIDS.length;i++){
+      var s = SOLIDS[i];
+      if (!overlaps(s, P.pos.y, P.h)) continue;
+      touched = true;
+      var pxL = (P.pos.x + r) - s.x0, pxR = s.x1 - (P.pos.x - r);
+      var pyD = (P.pos.y + P.h) - s.y0, pyU = s.y1 - P.pos.y;
+      var pzL = (P.pos.z + r) - s.z0, pzR = s.z1 - (P.pos.z - r);
+      var px = Math.min(pxL, pxR), py = Math.min(pyD, pyU), pz = Math.min(pzL, pzR);
+      var pyW = py * Y_BIAS;
+      if (pyW <= px && pyW <= pz){
+        if (pyU <= pyD){ P.pos.y = s.y1; if (P.vel.y < 0) P.vel.y = 0; P.grounded = true; }
+        else { P.pos.y = s.y0 - P.h; if (P.vel.y > 0) P.vel.y = 0; }
+      } else if (px <= pz){
+        if (pxL <= pxR){ P.pos.x = s.x0 - r; if (P.vel.x > 0) P.vel.x = 0; }
+        else { P.pos.x = s.x1 + r; if (P.vel.x < 0) P.vel.x = 0; }
+      } else {
+        if (pzL <= pzR){ P.pos.z = s.z0 - r; if (P.vel.z > 0) P.vel.z = 0; }
+        else { P.pos.z = s.z1 + r; if (P.vel.z < 0) P.vel.z = 0; }
+      }
+    }
+    if (!touched) break;
+  }
+}
+function integrate(dt){
+  var big = Math.max(Math.abs(P.vel.x), Math.abs(P.vel.y), Math.abs(P.vel.z));
+  var steps = Math.min(8, Math.max(1, Math.ceil(big * dt / 0.18)));
+  var sdt = dt / steps;
+  for (var i=0;i<steps;i++){
+    P.pos.x += P.vel.x * sdt;
+    P.pos.y += P.vel.y * sdt;
+    P.pos.z += P.vel.z * sdt;
+    resolve();
+  }
+}
+function waterAt(y){
+  // Test the whole body box. A midpoint test flips to "dry" the moment
+  // buoyancy lifts the player, which oscillates them in and out of the
+  // water every frame and takes their controls with it.
+  var r = CFG.radius;
+  for (var i=0;i<WVOL.length;i++){
+    var v = WVOL[i];
+    if (P.pos.x + r > v.x0 && P.pos.x - r < v.x1 &&
+        P.pos.z + r > v.z0 && P.pos.z - r < v.z1 &&
+        y + P.h     > v.y0 && y           < v.y1) return v;
+  }
+  return null;
+}
+// Step onto a ledge whose top is just above the feet. This is what gets
+// the player out of water at a shore; without it they bob against the lip.
+function tryClimb(wx, wz){
+  var r = CFG.radius, best = null;
+  var px = P.pos.x + wx*0.6, pz = P.pos.z + wz*0.6;
+  for (var i=0;i<SOLIDS.length;i++){
+    var s = SOLIDS[i];
+    if (px + r <= s.x0 || px - r >= s.x1) continue;
+    if (pz + r <= s.z0 || pz - r >= s.z1) continue;
+    if (s.y1 > P.pos.y + P.h + 0.5) continue;   // overhead slab, not a shore
+    var rise = s.y1 - P.pos.y;
+    if (rise > 0.02 && rise <= 1.85 && (best === null || s.y1 > best)) best = s.y1;
+  }
+  if (best === null) return false;
+  var kx = P.pos.x, ky = P.pos.y, kz = P.pos.z;
+  P.pos.x = px; P.pos.y = best; P.pos.z = pz;
+  for (var j=0;j<SOLIDS.length;j++){
+    if (overlaps(SOLIDS[j], P.pos.y, P.h)){
+      P.pos.x = kx; P.pos.y = ky; P.pos.z = kz; return false;
+    }
+  }
+  P.vel.y = 0; P.grounded = true;
+  return true;
+}
+function canStand(){
+  for (var i=0;i<SOLIDS.length;i++) if (overlaps(SOLIDS[i], P.pos.y, CFG.hStand)) return false;
+  return true;
+}
+function setSmall(on){
+  if (on === P.small) return;
+  if (!on){
+    var keep = P.h; P.h = CFG.hStand;
+    if (!canStand()){ P.h = keep; toast('No headroom to stand up'); return; }
+    P.small = false;
+    P.vh += (P.h - P.vh) * 0.82; P.vhv = 0;
+    P.sq = 1.2; P.sqv = 0;               // grow: most of it now, a small pop after
+  } else {
+    P.small = true; P.h = CFG.hSmall;
+    P.vh += (P.h - P.vh) * 0.82; P.vhv = 0;
+    P.sq = 0.8; P.sqv = 0;               // shrink: most of it now, a small squeeze after
+    learned('small');
+  }
+  document.getElementById('bSmall').classList.toggle('hit', P.small);
+}
+
+/* ================= input ================= */
+function typing(ev){
+  var t = ev.target;
+  return t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT');
+}
+function lockMouse(){
+  if (TOUCH || document.pointerLockElement === canvas) return;
+  try { var p = canvas.requestPointerLock(); if (p && p.catch) p.catch(function(){}); }
+  catch(err){ /* browser refused; mouse look just stays off */ }
+}
+// Read the PHYSICAL key, not the character it types. On a Hebrew layout
+// the W key types a geresh and A, S, D, C, V, R type Hebrew letters, so a
+// character check made movement and every ability key dead unless the
+// player switched layouts. ev.code is the key's position on the board.
+function keyName(ev){
+  var c = ev.code || '';
+  if (c.indexOf('Key') === 0) return c.slice(3).toLowerCase();   // KeyW -> w
+  if (c === 'Space') return ' ';
+  if (c.indexOf('Shift') === 0) return 'shift';
+  return (ev.key || '').toLowerCase();                            // arrows, escape
+}
+window.addEventListener('keydown', function(ev){
+  if (typing(ev)) return;
+  var k = keyName(ev);
+  if (k === ' ') ev.preventDefault();
+  if (!keys[k]){
+    if (k === 'c' && has('small')) setSmall(!P.small);
+    if (k === 'r') toggleResults();
+    if (k === 'v'){
+      skinIx = (skinIx + 1) % SKINS.length;
+      applySkin();
+      RUN.skinsSeen[SKINS[skinIx].id] = true;
+      toast('Skin: ' + SKINS[skinIx].nm);
+    }
+  }
+  keys[k] = true;
+});
+window.addEventListener('keyup', function(ev){
+  if (typing(ev)) return;
+  keys[keyName(ev)] = false;
+});
+window.addEventListener('blur', function(){ keys = Object.create(null); });
+
+canvas.addEventListener('click', function(){ if (RUN.started) lockMouse(); });
+document.addEventListener('mousemove', function(ev){
+  if (document.pointerLockElement !== canvas) return;
+  yaw   -= ev.movementX * CFG.lookSens;
+  pitch -= ev.movementY * CFG.lookSens;
+  pitch = Math.max(-0.95, Math.min(0.62, pitch));
+});
+
+// touch: left half drives the stick, right half drags the camera
+var stickEl = document.getElementById('stick'), knobEl = document.getElementById('knob');
+var stickId = null, stickOx = 0, stickOy = 0, lookId = null, lookX = 0, lookY = 0;
+function onTouchStart(ev){
+  for (var i=0;i<ev.changedTouches.length;i++){
+    var t = ev.changedTouches[i];
+    if (t.clientX < window.innerWidth * 0.5 && stickId === null){
+      stickId = t.identifier; stickOx = t.clientX; stickOy = t.clientY;
+      stickEl.style.left = (stickOx-59)+'px'; stickEl.style.top = (stickOy-59)+'px'; stickEl.style.opacity = 1;
+      knobEl.style.left = (stickOx-25)+'px';  knobEl.style.top = (stickOy-25)+'px';  knobEl.style.opacity = 1;
+    } else if (lookId === null){
+      lookId = t.identifier; lookX = t.clientX; lookY = t.clientY;
+    }
+  }
+}
+function onTouchMove(ev){
+  for (var i=0;i<ev.changedTouches.length;i++){
+    var t = ev.changedTouches[i];
+    if (t.identifier === stickId){
+      var dx = t.clientX - stickOx, dy = t.clientY - stickOy;
+      var len = Math.hypot(dx,dy), max = 52;
+      if (len > max){ dx = dx/len*max; dy = dy/len*max; }
+      touchMove.x = dx/max; touchMove.y = -dy/max;
+      knobEl.style.left = (stickOx+dx-25)+'px'; knobEl.style.top = (stickOy+dy-25)+'px';
+    } else if (t.identifier === lookId){
+      yaw   -= (t.clientX - lookX) * 0.0052;
+      pitch -= (t.clientY - lookY) * 0.0052;
+      pitch = Math.max(-0.95, Math.min(0.62, pitch));
+      lookX = t.clientX; lookY = t.clientY;
+    }
+  }
+  ev.preventDefault();
+}
+function onTouchEnd(ev){
+  for (var i=0;i<ev.changedTouches.length;i++){
+    var t = ev.changedTouches[i];
+    if (t.identifier === stickId){
+      stickId = null; touchMove.x = 0; touchMove.y = 0;
+      stickEl.style.opacity = 0; knobEl.style.opacity = 0;
+    } else if (t.identifier === lookId) lookId = null;
+  }
+}
+canvas.addEventListener('touchstart', onTouchStart, {passive:true});
+canvas.addEventListener('touchmove',  onTouchMove,  {passive:false});
+canvas.addEventListener('touchend',   onTouchEnd,   {passive:true});
+canvas.addEventListener('touchcancel',onTouchEnd,   {passive:true});
+
+function bindHold(el, set){
+  el.addEventListener('touchstart', function(e){ e.preventDefault(); set(true);  el.classList.add('hit'); }, {passive:false});
+  el.addEventListener('touchend',   function(e){ e.preventDefault(); set(false); el.classList.remove('hit'); }, {passive:false});
+  el.addEventListener('mousedown',  function(){ set(true);  el.classList.add('hit'); });
+  window.addEventListener('mouseup',function(){ set(false); el.classList.remove('hit'); });
+}
+bindHold(document.getElementById('bJump'), function(v){ tJump = v; });
+bindHold(document.getElementById('bDive'), function(v){ tDive = v; });
+// A 'click' fires when the finger LIFTS, so every shrink on a phone waited
+// for the tap to finish. Toggle on the press. preventDefault on touchstart
+// also stops the browser's emulated mousedown, so one tap is one toggle.
+function onShrinkPress(e){
+  if (e && e.cancelable) e.preventDefault();
+  if (has('small')) setSmall(!P.small); else toast('Nothing here can shrink yet');
+}
+document.getElementById('bSmall').addEventListener('touchstart', onShrinkPress, {passive:false});
+document.getElementById('bSmall').addEventListener('mousedown', onShrinkPress);
+
+/* ================= step ================= */
+function step(dt){
+  // ---- wish direction in camera space ----
+  var fx = Math.sin(yaw), fz = Math.cos(yaw);
+  var wx = 0, wz = 0;
+  if (keys['w'] || keys['arrowup'])    { wx += fx;  wz += fz;  }
+  if (keys['s'] || keys['arrowdown'])  { wx -= fx;  wz -= fz;  }
+  if (keys['a'] || keys['arrowleft'])  { wx += fz;  wz -= fx;  }
+  if (keys['d'] || keys['arrowright']) { wx -= fz;  wz += fx;  }
+  if (touchMove.x || touchMove.y){
+    wx += fx*touchMove.y - fz*touchMove.x;
+    wz += fz*touchMove.y + fx*touchMove.x;
+  }
+  var wl = Math.hypot(wx, wz);
+  if (wl > 1){ wx /= wl; wz /= wl; wl = 1; }
+
+  var jumpHeld = !!keys[' '] || tJump;
+  // Shift is sprint on land and dive in the water. Holding it from a sprint
+  // straight into a lake used to dive the player by accident, and that
+  // accident counted as "found the dive" and silenced its prompt for good.
+  // A dive now takes a fresh press once afloat.
+  var shiftDown = !!keys['shift'];
+  if (!P.inWater) P.diveBlock = shiftDown;
+  else if (!shiftDown) P.diveBlock = false;
+  var downHeld = (shiftDown && !P.diveBlock) || tDive;
+
+  P.inWater = waterAt(P.pos.y);
+  var swimming = P.inWater && has('swim');
+
+  if (swimming){
+    var target = CFG.swimSpeed * (P.small ? CFG.smallSpeed : 1);
+    P.vel.x = moveToward(P.vel.x, wx*target, CFG.swimAccel*dt);
+    P.vel.z = moveToward(P.vel.z, wz*target, CFG.swimAccel*dt);
+    var depth = P.inWater.y1 - (P.pos.y + P.h*0.5);          // >0 while under the surface
+    P.vel.y += (-CFG.waterGrav + CFG.buoy * Math.min(1, Math.max(0, depth))) * dt;
+    if (jumpHeld) P.vel.y += CFG.swimVert * dt;
+    if (downHeld && !P.diveWas){
+      // the press itself moves the body; acceleration alone took 5 frames
+      P.vel.y = Math.min(P.vel.y, -3.4);
+      P.sq = Math.max(P.sq, 1.12);
+    }
+    if (downHeld){
+      P.vel.y -= CFG.swimVert * dt;
+      if (depth > 0.9) learned('swim');   // only a real dive proves it was found
+    }
+    var drag = 1 - Math.min(1, CFG.waterDrag*dt);
+    P.vel.x *= drag; P.vel.y *= drag; P.vel.z *= drag;
+    P.grounded = false; P.coyote = 0; P.airJumps = has('dj') ? 1 : 0;
+
+  } else if (P.inWater){
+    // No swim: wade in chest-deep and get refused. Velocity is driven
+    // straight from the position error, so it settles instead of bobbing.
+    var surf = P.inWater.y1 - Math.min(1.1, P.h*0.6);
+    P.vel.y = (surf - P.pos.y) * 9;
+    var f = CFG.flounder * CFG.walk;
+    P.vel.x = moveToward(P.vel.x, wx*f, 24*dt);
+    P.vel.z = moveToward(P.vel.z, wz*f, 24*dt);
+    P.grounded = false; P.coyote = 0; P.airJumps = 0;
+
+  } else {
+    // ---- jump bookkeeping ----
+    if (P.grounded){ P.coyote = CFG.coyote; P.airJumps = has('dj') ? 1 : 0; }
+    else P.coyote -= dt;
+    if (jumpHeld && !P.jumpWas) P.buffer = CFG.buffer; else P.buffer -= dt;
+
+    if (P.buffer > 0){
+      if (P.coyote > 0){ P.vel.y = CFG.jumpVel; P.coyote = 0; P.buffer = 0; P.cut = false; }
+      else if (P.airJumps > 0){ P.airJumps--; P.vel.y = CFG.djVel; P.buffer = 0; P.cut = false; learned('dj'); popDoubleJump(); }
+    }
+    if (!jumpHeld && P.vel.y > 0 && !P.cut){ P.vel.y *= CFG.cutMul; P.cut = true; }
+
+    var stickPush = Math.sqrt(touchMove.x*touchMove.x + touchMove.y*touchMove.y);
+    var touchRun = stickPush > 0.9;
+    if (touchRun && wl > 0){ wx /= wl; wz /= wl; wl = 1; }   // the rim is full speed
+    var sp = ((keys['shift'] || touchRun) ? CFG.sprint : CFG.walk) * (P.small ? CFG.smallSpeed : 1);
+    var acc = wl > 0 ? (P.grounded ? CFG.accelGround : CFG.accelAir)
+                     : (P.grounded ? CFG.brakeGround : CFG.brakeAir);
+    P.vel.x = moveToward(P.vel.x, wx*sp, acc*dt);
+    P.vel.z = moveToward(P.vel.z, wz*sp, acc*dt);
+    P.vel.y -= (P.vel.y > 0 ? CFG.gravUp : CFG.gravDown) * dt;
+    if (P.vel.y < -46) P.vel.y = -46;
+  }
+  P.jumpWas = jumpHeld;
+
+  P.diveWas = downHeld && swimming;
+  var wasGrounded = P.grounded, fallV = P.vel.y;
+  P.grounded = false;
+  integrate(dt);
+  if (P.grounded && !wasGrounded && fallV < -3.5){
+    // a landing is a squeeze, and the beads answer it
+    P.sq = Math.max(0.5, 1 + fallV*0.032);
+    P.sqv = 0;
+  }
+
+  if (P.inWater){
+    if (!has('swim')){
+      // Never more than a wade past the edge you came in by. This is what
+      // keeps gate 3 shut, not the push that used to drift you across.
+      var v = P.inWater, WADE = 2.2;
+      if (P.pos.z - v.z0 < v.z1 - P.pos.z){
+        if (P.pos.z > v.z0 + WADE){ P.pos.z = v.z0 + WADE; if (P.vel.z > 0) P.vel.z = 0; }
+      } else {
+        if (P.pos.z < v.z1 - WADE){ P.pos.z = v.z1 - WADE; if (P.vel.z < 0) P.vel.z = 0; }
+      }
+    }
+    if (wl > 0.1) tryClimb(wx, wz);
+  }
+
+  if (P.pos.y < -30){ P.pos.set(0,2,8); P.vel.set(0,0,0); toast('Respawned'); }
+
+  var speedNow = Math.hypot(P.vel.x, P.vel.z);
+
+  // ---- facing ----
+  if (wl > 0.01){
+    var want = Math.atan2(wx, wz);
+    var d = ((want - P.face + Math.PI*3) % (Math.PI*2)) - Math.PI;
+    P.face += d * Math.min(1, 16*dt);
+  }
+  // Squash is driven by what the body is actually doing: it stretches on
+  // the way up and down, and a landing compresses it and springs back.
+  var sqTarget = 1, bob = 0;
+  var swimmingNow = P.inWater && has('swim');
+  if (swimmingNow){
+    // diving streamlines the body; afloat, it breathes slowly
+    sqTarget = downHeld ? 1.14 : 1 + Math.sin(RUN.t*2.2)*0.03;
+  } else if (!P.grounded){
+    sqTarget = 1 + Math.max(-0.18, Math.min(0.26, P.vel.y*0.019));
+  } else if (speedNow > 0.5){
+    var gait = Math.min(1, speedNow / CFG.walk);
+    sqTarget = 1 + Math.sin(RUN.t*9) * 0.085 * gait;
+    bob = Math.abs(Math.sin(RUN.t*9)) * 0.07 * gait;
+  }
+  P.sqv += (sqTarget - P.sq) * 130 * dt;
+  P.sqv *= 1 - Math.min(1, 11*dt);
+  P.sq  += P.sqv * dt;
+  P.sq = Math.max(0.45, Math.min(1.42, P.sq));
+
+  // drawn height springs toward the collision height, with a little overshoot
+  P.vhv += (P.h - P.vh) * 520 * dt;
+  P.vhv *= 1 - Math.min(1, 26*dt);
+  P.vh  += P.vhv * dt;
+  P.vh = Math.max(0.45, Math.min(2.1, P.vh));
+  P.pop = Math.max(0, P.pop - dt/0.38);
+  var subTarget = 0;
+  if (swimmingNow){
+    var cdepth = P.inWater.y1 - (P.pos.y + P.h*0.5);
+    subTarget = Math.max(0, Math.min(1, (cdepth - 0.2) / 0.9));
+  }
+  P.sub += (subTarget - P.sub) * Math.min(1, 5*dt);
+  tickFX(dt, swimmingNow && downHeld);
+
+  pGrp.position.set(P.pos.x, P.pos.y, P.pos.z);
+  pGrp.rotation.y = P.face;
+  pGrp.rotation.z = Math.sin(RUN.t*7) * (P.grounded && speedNow > 1 ? 0.035 : 0.012);
+  drawSquishy(RUN.t, P.sq, bob);
+
+  var stride = P.grounded && speedNow > 0.6 ? Math.sin(RUN.t * 9) * 0.14 : 0;
+  var fy = P.vh * 0.055;
+  SQ.footL.position.set(-P.vh*0.11, fy + Math.max(0, stride)*0.35, 0.03 + stride);
+  SQ.footR.position.set( P.vh*0.11, fy + Math.max(0,-stride)*0.35, 0.03 - stride);
+  var fs = P.vh/CFG.hStand;
+  SQ.footL.scale.set(0.16*fs,0.09*fs,0.22*fs);
+  SQ.footR.scale.set(0.16*fs,0.09*fs,0.22*fs);
+  // the body answers the feet a beat late
+  SQ.hips.rotation.z = (P.sq - 1) * 0.42;
+
+  // ---- blob shadow ----
+  downRay.set(new THREE.Vector3(P.pos.x, P.pos.y + 0.2, P.pos.z), new THREE.Vector3(0,-1,0));
+  var hits = downRay.intersectObjects(solidMeshes, false);
+  if (hits.length){
+    blob.visible = true;
+    blob.position.set(P.pos.x, hits[0].point.y + 0.03, P.pos.z);
+    var k = Math.max(0, 1 - hits[0].distance/7);
+    blob.scale.setScalar(0.55 + k*0.6);
+    blob.material.opacity = 0.05 + k*0.22;
+  } else blob.visible = false;
+}
+
+/* ================= world checks ================= */
+function inBox(b){
+  var cy = P.pos.y + P.h*0.5;
+  return P.pos.x >= b[0] && P.pos.x <= b[3] &&
+         cy      >= b[1] && cy      <= b[4] &&
+         P.pos.z >= b[2] && P.pos.z <= b[5];
+}
+function near(x,y,z,r){
+  var dx = P.pos.x-x, dy = (P.pos.y+P.h*0.5)-y, dz = P.pos.z-z;
+  return dx*dx + dy*dy + dz*dz < r*r;
+}
+function zoneOf(){
+  if (P.pos.z < -49.5) return 'ledge';
+  if (P.pos.z < -15.5) return 'plateau';
+  if (P.pos.x >  24)   return 'alcove';
+  if (P.pos.x < -24)   return 'chamber';
+  if (P.pos.z >  35.5) return 'farshore';
+  if (P.pos.z >  18.5) return 'channel';
+  return 'plaza';
+}
+function checkWorld(){
+  // creatures
+  for (var i=0;i<PICKUPS.length;i++){
+    var pk = PICKUPS[i];
+    if (RUN.abilities[pk.id]) continue;
+    if (near(pk.x, pk.y, pk.z, 1.7)){
+      RUN.abilities[pk.id] = RUN.t;
+      pickMeshes[pk.id].grp.visible = false;
+      document.getElementById(pk.id==='dj'?'cDj':pk.id==='swim'?'cSwim':'cSmall').classList.add('on');
+      if (pk.id === 'small') document.getElementById('bSmall').classList.remove('dim');
+      if (pk.id === 'swim')  document.getElementById('bDive').classList.remove('dim');
+      if (pk.id === 'dj')    P.airJumps = 1;
+      showGrant(pk.id, pk.label);
+      paintGates();
+    }
+  }
+  // relics
+  for (var j=0;j<RELICS.length;j++){
+    var rl = RELICS[j];
+    if (RUN.relics[rl.id]) continue;
+    if (near(rl.x, rl.y, rl.z, 1.7)){
+      RUN.relics[rl.id] = RUN.t;
+      relicMeshes[rl.id].m.visible = false;
+      toast('Relic found');
+      paintMeters();
+    }
+  }
+  // gates
+  for (var g=0; g<GATES.length; g++){
+    var G = GATES[g];
+    if (RUN.opened[G.id]) continue;
+    if (inBox(G.cl)){
+      RUN.opened[G.id] = true; RUN.openedAt[G.id] = RUN.t;
+      markMeshes[G.id].grp.visible = false;
+      toast('Gate ' + G.n + ' open — ' + G.name);
+      paintGates(); paintMeters();
+      if (Object.keys(RUN.opened).length === GATES.length && RUN.allOpenAt == null){
+        RUN.allOpenAt = RUN.t;
+        toast('All five gates open \u2014 look around', 4);
+      }
+      continue;
+    }
+    if (!RUN.marked[G.id] && !gateReady(G) && inBox(G.ap)){
+      RUN.marked[G.id] = RUN.t; RUN.markOrder.push(G.id);
+      markMeshes[G.id].grp.visible = true;
+      toast('Marked — something else opens this');
+      paintGates(); paintMeters();
+    }
+  }
+  // Stuck on an input, not on a puzzle: you own the ability, you are at a
+  // gate it opens, and you have never pressed the button.
+  teachTick();
+
+  // returns to ground already left
+  var z = zoneOf();
+  if (z !== RUN.zone){
+    if (RUN.seen[z]) { RUN.backtracks++; paintMeters(); }
+    RUN.seen[z] = 1; RUN.zone = z;
+  }
+}
+
+/* ================= hud ================= */
+var locksEl = document.getElementById('locks');
+function paintGates(){
+  var html = '';
+  for (var i=0;i<GATES.length;i++){
+    var G = GATES[i], cls = '', state = 'unseen';
+    if (RUN.opened[G.id]) { cls = 'done';   state = fmt(RUN.openedAt[G.id]); }
+    else if (RUN.marked[G.id] && gateReady(G)) { cls = 'ready';  state = 'you can open this'; }
+    else if (RUN.marked[G.id]) { cls = 'marked'; state = 'needs something'; }
+    else { state = '—'; }
+    html += '<div class="lk '+cls+'"><b>'+G.n+'. '+(RUN.marked[G.id]||RUN.opened[G.id]?G.name:'unknown')+'</b><i>'+state+'</i></div>';
+  }
+  locksEl.innerHTML = html;
+}
+function teachTick(){
+  var dt = LAST_DT;
+  if (grantHold > 0){
+    grantHold -= dt;
+    if (grantHold <= 0) grantEl.classList.remove('show');
+    if (teachOn) hideTeach();
+    return;
+  }
+  if (teachHold > 0){
+    teachHold -= dt;
+    if (teachHold <= 0) hideTeach();
+    return;
+  }
+  wetT = P.inWater ? wetT + dt : 0;
+  var want = null;
+  // Gate 4 sits under the water, so its approach box cannot be reached
+  // without already knowing how to dive. Time spent afloat stands in.
+  if (has('swim') && !TEACH.swim.used && wetT > 4 && !RUN.opened.g4) want = 'swim';
+  for (var i=0; i<GATES.length && !want; i++){
+    var G = GATES[i];
+    if (RUN.opened[G.id] || !gateReady(G)) continue;
+    if (!inBox(G.ap) && !inBox(G.cl)) continue;
+    for (var k=0;k<G.needs.length;k++){
+      if (TEACH[G.needs[k]] && !TEACH[G.needs[k]].used){ want = G.needs[k]; break; }
+    }
+  }
+  if (!want){ dwellId = null; dwellT = 0; if (teachOn) hideTeach(); return; }
+  if (want !== dwellId){ dwellId = want; dwellT = 0; }
+  dwellT += dt;
+  if (dwellT > 5){
+    showTeach(want, 0);
+    if (!RUN.taughtAt[want]) RUN.taughtAt[want] = RUN.t;
+  }
+}
+function countMarkedOpen(){
+  var n = 0;
+  for (var k in RUN.marked) if (!RUN.opened[k]) n++;
+  return n;
+}
+function paintMeters(){
+  document.getElementById('mRel').textContent  = Object.keys(RUN.relics).length + ' / 3';
+  document.getElementById('mMark').textContent = countMarkedOpen();
+  document.getElementById('mBack').textContent = RUN.backtracks;
+  document.getElementById('hudMini').textContent =
+    'Gates ' + Object.keys(RUN.opened).length + '/5 \u00b7 Marked ' + countMarkedOpen() +
+    ' \u00b7 Relics ' + Object.keys(RUN.relics).length + '/3';
+}
+paintGates(); paintMeters();
+
+/* ================= loop ================= */
+var last = performance.now(), LAST_DT = 0.016, MANUAL = false;
+var END_GRACE = 8;      // seconds to explore what the last gate opened
+function tick(dt){
+  LAST_DT = dt;
+  RUN.t += dt;
+  step(dt);
+  checkWorld();
+  document.getElementById('mTime').textContent = fmt(RUN.t);
+  if (!RUN.endShown && RUN.allOpenAt != null && RUN.t - RUN.allOpenAt > END_GRACE) showEnd(true);
+  if (!RUN.endShown && RUN.t > 600) showEnd(false);
+}
+function frame(now){
+  requestAnimationFrame(frame);
+  var rawDt = (now - last)/1000; last = now;
+  var dt = Math.min(0.05, rawDt);
+  // real frame times, before the physics clamp hides a slow phone
+  if (RUN.started && !MANUAL && rawDt > 0 && rawDt < 1) PERF.add(rawDt);
+
+  if (RUN.started && !MANUAL) tick(dt);
+
+  if (toastT > 0){ toastT -= dt; if (toastT <= 0) toastEl.classList.remove('show'); }
+
+  if (!REDUCE){
+    var b = now/1000;
+    for (var id in pickMeshes){
+      var pm = pickMeshes[id];
+      pm.grp.position.y = pm.base + Math.sin(b*1.7 + pm.base)*0.14;
+      pm.grp.rotation.y = b*0.7;
+    }
+    for (var rid in relicMeshes){
+      var rm = relicMeshes[rid];
+      rm.m.rotation.y = b*1.1; rm.m.rotation.x = b*0.5;
+      rm.m.position.y = rm.base + Math.sin(b*2.1)*0.1;
+    }
+    for (var gid in markMeshes){
+      var mm = markMeshes[gid];
+      if (!mm.grp.visible) continue;
+      mm.grp.position.y = mm.base + Math.sin(b*1.9)*0.16;
+      mm.grp.rotation.y = b*0.9;
+      mm.ring.scale.setScalar(1 + Math.sin(b*2.6)*0.09);
+    }
+  }
+
+  // ---- camera ----
+  var tgt = new THREE.Vector3(P.pos.x, P.pos.y + Math.max(P.vh,0.9)*0.8, P.pos.z);
+  var look = new THREE.Vector3(
+    Math.sin(yaw)*Math.cos(pitch), Math.sin(pitch), Math.cos(yaw)*Math.cos(pitch)
+  );
+  var dist = CFG.camDist;
+  camRay.set(tgt, look.clone().multiplyScalar(-1));
+  camRay.far = dist;
+  var ch = camRay.intersectObjects(solidMeshes, false);
+  if (ch.length) dist = Math.max(CFG.camMinDist, ch[0].distance - 0.35);
+  var want = tgt.clone().addScaledVector(look, -dist);
+  camPos.lerp(want, Math.min(1, CFG.camLerp * dt));
+  camera.position.copy(camPos);
+  applyUnderwater(camPos);
+  camera.lookAt(tgt);
+
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(frame);
+
+function fovFor(aspect){
+  if (aspect >= 1) return 66;
+  var keepAcross = 55 * Math.PI/180;              // horizontal view to protect
+  var v = 2 * Math.atan(Math.tan(keepAcross/2) / aspect) * 180/Math.PI;
+  return Math.max(66, Math.min(88, v));           // past ~88 the edges smear
+}
+function resize(){
+  var w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h;
+  camera.fov = fovFor(camera.aspect);
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ================= run recording ================= */
+/* ---- what a tester's run carries back ---------------------------------
+   The engine decision turns on how this runs on real phones, so every run
+   measures its own frame rate. Device detail stays coarse on purpose: a
+   platform name and a screen size, never the full user-agent string. */
+var PERF = {
+  b: [], n: 0,
+  add: function(dt){
+    var i = Math.min(24, Math.floor((1/dt)/5));
+    this.b[i] = (this.b[i]||0) + 1; this.n++;
+  },
+  // frame rate at percentile p, from 5-fps buckets
+  pct: function(p){
+    var want = this.n*p, acc = 0;
+    for (var i=0;i<25;i++){ acc += (this.b[i]||0); if (acc >= want) return i*5 + 2.5; }
+    return 122.5;
+  }
+};
+function deviceInfo(){
+  var ua = navigator.userAgent || '';
+  var plat = /iPhone/.test(ua) ? 'iphone'
+           : (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) ? 'ipad'
+           : /Android/.test(ua) ? 'android'
+           : /Macintosh/.test(ua) ? 'mac'
+           : /Windows/.test(ua) ? 'windows' : 'other';
+  return {plat: plat, scr: screen.width + 'x' + screen.height + '@' + (window.devicePixelRatio||1), touch: TOUCH};
+}
+function toCode(doc){
+  var bytes = new TextEncoder().encode(JSON.stringify(doc));
+  var bin = '';
+  for (var i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+  return 'SW1.' + btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+var IN_CLAUDE = !!(window.claude && typeof window.claude.use === 'function');
+// Every round of testers gets its own label. Round 1 ran on builds that all
+// said 'phase1-freeze'; from here the label moves with the build.
+var BUILD_ID = 'test-build-4';
+
+var DB = null;
+try {
+  if (window.claude && typeof window.claude.use === 'function'){
+    window.claude.use('db').then(function(d){ DB = d; }).catch(function(){ DB = null; });
+  }
+} catch(err){ DB = null; }
+
+function runDoc(rating, note){
+  return {
+    at: new Date().toISOString(),
+    device: TOUCH ? 'touch' : 'desktop',
+    totalSec: Math.round(RUN.t),
+    gatesOpen: Object.keys(RUN.opened).length,
+    openedAt: RUN.openedAt,
+    abilitiesAt: RUN.abilities,
+    markOrder: RUN.markOrder,
+    markCount: RUN.markOrder.length,
+    markedStillShut: countMarkedOpen(),
+    taughtAt: RUN.taughtAt,
+    skinEnded: SKINS[skinIx].id,
+    skinsSeen: Object.keys(RUN.skinsSeen),
+    neededHint: Object.keys(RUN.taughtAt),
+    backtracks: RUN.backtracks,
+    relics: Object.keys(RUN.relics).length,
+    relicsFound: Object.keys(RUN.relics),
+    completed: Object.keys(RUN.opened).length === GATES.length,
+    rating: rating || null,
+    note: (note || '').slice(0, 500),
+    fpsMedian: PERF.n ? PERF.pct(0.5) : null,
+    fpsLow: PERF.n ? PERF.pct(0.1) : null,
+    frames: PERF.n,
+    dev: deviceInfo(),
+    build: BUILD_ID
+  };
+}
+function saveRun(rating, note){
+  if (!DB) return Promise.resolve(false);
+  return DB.collection('runs').add(runDoc(rating, note))
+    .then(function(){ return true; })
+    .catch(function(){ return false; });
+}
+
+/* ================= screens ================= */
+var vStart = document.getElementById('vStart'),
+    vEnd   = document.getElementById('vEnd'),
+    vRes   = document.getElementById('vRes'),
+    hintEl = document.getElementById('hint');
+
+if (TOUCH){
+  document.getElementById('touch').classList.remove('off');
+  document.getElementById('keysPc').hidden = true;
+  document.getElementById('keysTouch').hidden = false;
+}
+
+document.getElementById('bStart').addEventListener('click', function(){
+  vStart.hidden = true;
+  RUN.started = true;
+  last = performance.now();
+  lockMouse();
+  setTimeout(function(){ hintEl.classList.add('hide'); }, 11000);
+});
+
+var rating = 0;
+document.getElementById('rate').addEventListener('click', function(ev){
+  var b = ev.target.closest('button'); if (!b) return;
+  rating = +b.dataset.v;
+  var all = this.querySelectorAll('button');
+  for (var i=0;i<all.length;i++) all[i].setAttribute('aria-pressed', all[i] === b ? 'true' : 'false');
+});
+
+function showEnd(complete){
+  RUN.endShown = true;
+  document.exitPointerLock && document.exitPointerLock();
+  document.getElementById('endStamp').textContent = complete ? 'Run complete' : 'Ten minutes in';
+  document.getElementById('endTitle').textContent = complete
+    ? 'All five gates open' : 'How is it going?';
+  var rows = '';
+  for (var i=0;i<GATES.length;i++){
+    var G = GATES[i];
+    rows += '<div><b>Gate ' + G.n + ' · ' + G.name + '</b><span>' +
+      (RUN.opened[G.id] ? fmt(RUN.openedAt[G.id]) : (RUN.marked[G.id] ? 'marked, still shut' : 'never found')) +
+      '</span></div>';
+  }
+  rows += '<div><b>Marked before opened</b><span>' + RUN.markOrder.length + '</span></div>';
+  rows += '<div><b>Returns to old ground</b><span>' + RUN.backtracks + '</span></div>';
+  document.getElementById('endTimes').innerHTML = rows;
+  vEnd.hidden = false;
+}
+function showCode(){
+  var code = toCode(runDoc(rating, document.getElementById('endNote').value));
+  var box = document.getElementById('codeBox');
+  document.getElementById('codeText').value = code;
+  document.getElementById('bShare').hidden = !navigator.share;
+  document.getElementById('bSend').hidden = true;
+  document.getElementById('bSkip').textContent = 'Back to the game';
+  box.hidden = false;
+  RUN.sent = 'code';
+}
+document.getElementById('bShare').addEventListener('click', function(){
+  var code = document.getElementById('codeText').value;
+  navigator.share({text: 'My Squish World test run:\n' + code}).catch(function(){});
+});
+document.getElementById('bCopy').addEventListener('click', function(){
+  var ta = document.getElementById('codeText'), btn = this;
+  function done(){ btn.textContent = 'Copied'; setTimeout(function(){ btn.textContent = 'Copy the code'; }, 1800); }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ta.value).then(done, function(){ ta.select(); document.execCommand('copy'); done(); });
+  } else { ta.select(); document.execCommand('copy'); done(); }
+});
+document.getElementById('bSend').addEventListener('click', function(){
+  var btn = this;
+  if (!DB){ showCode(); return; }       // outside claude: hand the tester a code
+  btn.disabled = true; btn.textContent = 'Sending…';
+  saveRun(rating, document.getElementById('endNote').value).then(function(ok){
+    RUN.sent = ok;
+    vEnd.hidden = true;
+    btn.disabled = false; btn.textContent = 'Send and keep playing';
+    toast(ok ? 'Run recorded — thank you' : 'Could not record this run', 3.4);
+    lockMouse();
+  });
+});
+document.getElementById('bSkip').addEventListener('click', function(){
+  vEnd.hidden = true;
+  lockMouse();
+});
+
+/* ---- results ---- */
+function med(a){
+  if (!a.length) return 0;
+  var s = a.slice().sort(function(x,y){ return x-y; });
+  var m = Math.floor(s.length/2);
+  return s.length % 2 ? s[m] : Math.round((s[m-1]+s[m])/2);
+}
+function toggleResults(){
+  if (!vRes.hidden){ vRes.hidden = true; if (RUN.started) lockMouse(); return; }
+  document.exitPointerLock && document.exitPointerLock();
+  vRes.hidden = false;
+  var body = document.getElementById('resBody');
+  if (!DB){
+    body.innerHTML = '<p>Run recording is not available in this view, so there is nothing to read back yet.</p>';
+    return;
+  }
+  body.innerHTML = '<p>Reading runs…</p>';
+  DB.collection('runs').limit(300).get().then(function(snap){
+    var runs = snap.docs.map(function(d){ return d.data(); });
+    if (!runs.length){
+      body.innerHTML = '<p>No runs recorded yet. Finish a run and send it, and the numbers land here.</p>';
+      return;
+    }
+    var rated = runs.filter(function(r){ return r.rating; });
+    var done  = runs.filter(function(r){ return r.completed; });
+    var avg = rated.length ? (rated.reduce(function(s,r){ return s+r.rating; },0)/rated.length) : 0;
+    var goodFeel = rated.filter(function(r){ return r.rating >= 4; }).length;
+
+    var gateRows = '';
+    for (var i=0;i<GATES.length;i++){
+      var G = GATES[i];
+      var times = runs.filter(function(r){ return r.openedAt && r.openedAt[G.id]; })
+                      .map(function(r){ return Math.round(r.openedAt[G.id]); });
+      var markedN = runs.filter(function(r){ return (r.markOrder||[]).indexOf(G.id) !== -1; }).length;
+      gateRows += '<tr><td>' + G.n + '. ' + G.name + '</td><td>' + times.length + '/' + runs.length +
+                  '</td><td>' + (times.length ? fmt(med(times)) : '—') + '</td><td>' + markedN + '</td></tr>';
+    }
+    var notes = runs.filter(function(r){ return r.note; }).slice(-6).reverse()
+      .map(function(r){ return '<p style="border-left:2px solid var(--rule-strong);padding-left:10px;margin-bottom:9px">' +
+        String(r.note).replace(/[<>&]/g, function(c){ return ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]; }) + '</p>'; }).join('');
+
+    body.innerHTML =
+      '<div class="times">' +
+        '<div><b>Runs recorded</b><span>' + runs.length + '</span></div>' +
+        '<div><b>Reached all five gates</b><span>' + done.length + ' (' + Math.round(done.length/runs.length*100) + '%)</span></div>' +
+        '<div><b>Rated the movement 4 or 5</b><span>' + goodFeel + ' of ' + rated.length + '</span></div>' +
+        '<div><b>Mean rating</b><span>' + (avg ? avg.toFixed(1) : '—') + ' / 5</span></div>' +
+        '<div><b>Median run length</b><span>' + fmt(med(runs.map(function(r){ return r.totalSec||0; }))) + '</span></div>' +
+        '<div><b>Median returns to old ground</b><span>' + med(runs.map(function(r){ return r.backtracks||0; })) + '</span></div>' +
+      '</div>' +
+      '<h2>Gate by gate</h2>' +
+      '<div class="tblwrap"><table><thead><tr><th>Gate</th><th>Opened</th><th>Median</th><th>Marked first</th></tr></thead><tbody>' +
+        gateRows + '</tbody></table></div>' +
+      (notes ? '<h2>What people said</h2>' + notes : '') +
+      '<p class="note">Phase 1 passes when ten testers rate the movement 4 or 5 and most of them say out loud that a creature opened the world up. Marked-first counts are the number that tells you whether the gates read as puzzles or as walls.</p>';
+  }).catch(function(){
+    body.innerHTML = '<p>Could not read the runs just now. Close this and try again.</p>';
+  });
+}
+// Dev hook: lets the prototype be driven and asserted against from the
+// outside instead of eyeballed in a screenshot.
+window.__squish = {
+  P:P, RUN:RUN, CFG:CFG, GATES:GATES, TEACH:TEACH, waterAt:waterAt, SQ:SQ, SKINS:SKINS, FX:FX, WMAT:WMAT, toCode:toCode, runDoc:runDoc, PERF:PERF, camera:camera,
+  tick: tick,
+  // Hand the clock to the caller: the render loop stops stepping physics
+  // and every step comes from tick(), so a throttled tab cannot skew a run.
+  manual: function(on){ MANUAL = !!on; }
+};
+
+document.getElementById('bResults0').addEventListener('click', toggleResults);
+if (!IN_CLAUDE){
+  document.getElementById('bResults0').hidden = true;
+  document.getElementById('bSend').textContent = 'Get my result code';
+  document.getElementById('startNote').textContent =
+    'At the end you get a short result code to send back. It holds your times, your rating and note, ' +
+    'your device type and frame rate. Nothing else, and nothing leaves your device unless you send it.';
+}
+document.getElementById('bResClose').addEventListener('click', toggleResults);
+})();
+</script>
